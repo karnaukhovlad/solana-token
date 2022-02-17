@@ -155,7 +155,7 @@ impl Processor {
 
         let program_id = pool_contract_info.owner;
         let (program_authority_id, bump_seed) =
-            Pubkey::find_program_address(&[&user_wallet_x_info.key.to_bytes()], program_id);
+            Pubkey::find_program_address(&[&pool_contract_info.key.to_bytes()], program_id);
         if *authority_info.key != program_authority_id {
             return Err(CrateError::InvalidProgramAddress.into());
         }
@@ -304,7 +304,6 @@ mod tests {
         user_wallet_y_key: Pubkey,
         user_wallet_y_account: Account,
         user_wallets_authority_key: Pubkey,
-        user_wallets_authority_account: Account,
     }
 
     impl ContractAccountInfo {
@@ -384,7 +383,6 @@ mod tests {
                 user_wallet_y_key,
                 user_wallet_y_account,
                 user_wallets_authority_key,
-                user_wallets_authority_account: Default::default(),
             }
         }
 
@@ -575,12 +573,14 @@ mod tests {
             )
             .unwrap(),
             vec![
-                &mut accounts.user_wallets_authority_account,
+                &mut Account::default(),
                 &mut accounts.user_wallet_x_account,
                 &mut accounts.user_wallet_y_account,
                 &mut accounts.contract_account,
                 &mut accounts.pool_mint_account,
                 &mut accounts.pool_wallet_x_account,
+                &mut Account::default(),
+                &mut Account::default(),
             ],
         )
         .unwrap();
