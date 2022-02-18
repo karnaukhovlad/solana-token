@@ -7,6 +7,7 @@ use solana_program::program::invoke_signed;
 use solana_program::program_error::ProgramError;
 use solana_program::program_pack::Pack;
 use solana_program::pubkey::Pubkey;
+use spl_token::state::Account;
 use std::cmp::min;
 
 /// Program state handler.
@@ -51,15 +52,16 @@ impl Processor {
 
     /// Issue a spl_token `Burn` instruction.
     pub fn token_burn<'a>(
+        pool_contract: AccountInfo<'a>,
         token_program: AccountInfo<'a>,
         burn_account: AccountInfo<'a>,
         mint: AccountInfo<'a>,
         authority: AccountInfo<'a>,
-        bump_seed: u8,
         amount: u64,
+        bump_seed: u8,
     ) -> Result<(), ProgramError> {
-        let token_program_bytes = token_program.key.to_bytes();
-        let authority_signature_seeds = [&token_program_bytes[..32], &[bump_seed]];
+        let pool_contract_bytes = pool_contract.key.to_bytes();
+        let authority_signature_seeds = [&pool_contract_bytes[..32], &[bump_seed]];
         let signers = &[&authority_signature_seeds[..]];
 
         let ix = spl_token::instruction::burn(
@@ -80,6 +82,7 @@ impl Processor {
 
     /// Issue a spl_token `MintTo` instruction.
     pub fn token_mint_to<'a>(
+        pool_contract: AccountInfo<'a>,
         token_program: AccountInfo<'a>,
         mint: AccountInfo<'a>,
         destination: AccountInfo<'a>,
@@ -87,8 +90,8 @@ impl Processor {
         amount: u64,
         bump_seed: u8,
     ) -> Result<(), ProgramError> {
-        let token_program_bytes = token_program.key.to_bytes();
-        let authority_signature_seeds = [&token_program_bytes[..32], &[bump_seed]];
+        let pool_contract_bytes = pool_contract.key.to_bytes();
+        let authority_signature_seeds = [&pool_contract_bytes[..32], &[bump_seed]];
         let signers = &[&authority_signature_seeds[..]];
         let ix = spl_token::instruction::mint_to(
             token_program.key,
@@ -104,6 +107,7 @@ impl Processor {
 
     /// Issue a spl_token `Transfer` instruction.
     pub fn token_transfer<'a>(
+        pool_contract: AccountInfo<'a>,
         token_program: AccountInfo<'a>,
         source: AccountInfo<'a>,
         destination: AccountInfo<'a>,
@@ -111,8 +115,8 @@ impl Processor {
         amount: u64,
         bump_seed: u8,
     ) -> Result<(), ProgramError> {
-        let token_program_bytes = token_program.key.to_bytes();
-        let authority_signature_seeds = [&token_program_bytes[..32], &[bump_seed]];
+        let pool_contract_bytes = pool_contract.key.to_bytes();
+        let authority_signature_seeds = [&pool_contract_bytes[..32], &[bump_seed]];
         let signers = &[&authority_signature_seeds[..]];
         let ix = spl_token::instruction::transfer(
             token_program.key,
@@ -142,8 +146,7 @@ impl Processor {
         accounts: &[AccountInfo],
     ) -> ProgramResult {
         let account_info_iter = &mut accounts.iter();
-        dbg!(accounts.len());
-        // let program_token = next_account_info(account_info_iter)?;
+
         let user_wallets_authority_info = next_account_info(account_info_iter)?;
         let user_wallet_x_info = next_account_info(account_info_iter)?;
         let user_wallet_y_info = next_account_info(account_info_iter)?;
@@ -161,6 +164,7 @@ impl Processor {
         }
 
         Self::token_transfer(
+            pool_contract_info.clone(),
             token_program_info.clone(),
             user_wallet_x_info.clone(),
             pool_wallet_x_info.clone(),
@@ -169,6 +173,7 @@ impl Processor {
             bump_seed,
         )?;
         Self::token_mint_to(
+            pool_contract_info.clone(),
             token_program_info.clone(),
             pool_mint_info.clone(),
             user_wallet_y_info.clone(),
@@ -203,6 +208,42 @@ impl Processor {
         token_y_amount: u64,
         accounts: &[AccountInfo],
     ) -> ProgramResult {
+        let account_info_iter = &mut accounts.iter();
+
+        let user_wallets_authority_info = next_account_info(account_info_iter)?;
+        let user_wallet_x_info = next_account_info(account_info_iter)?;
+        let user_wallet_y_info = next_account_info(account_info_iter)?;
+        let pool_contract_info = next_account_info(account_info_iter)?;
+        let pool_mint_info = next_account_info(account_info_iter)?;
+        let pool_wallet_x_info = next_account_info(account_info_iter)?;
+        let authority_info = next_account_info(account_info_iter)?;
+        let token_program_info = next_account_info(account_info_iter)?;
+
+        let program_id = pool_contract_info.owner;
+        let (program_authority_id, bump_seed) =
+            Pubkey::find_program_address(&[&pool_contract_info.key.to_bytes()], program_id);
+        if *authority_info.key != program_authority_id {
+            return Err(CrateError::InvalidProgramAddress.into());
+        }
+
+        Self::token_transfer(
+            pool_contract_info.clone(),
+            token_program_info.clone(),
+            pool_wallet_x_info.clone(),
+            user_wallet_x_info.clone(),
+            authority_info.clone(),
+            token_y_amount,
+            bump_seed,
+        )?;
+        Self::token_burn(
+            pool_contract_info.clone(),
+            token_program_info.clone(),
+            user_wallet_y_info.clone(),
+            pool_mint_info.clone(),
+            user_wallets_authority_info.clone(),
+            token_y_amount,
+            bump_seed,
+        )?;
         Ok(())
     }
 
@@ -556,10 +597,37 @@ mod tests {
     }
 
     #[test]
-    fn test_change_x_to_y() {
+    fn test_contract() {
         let mut accounts = ContractAccountInfo::new();
         do_process_instruction(
             ContractInstruction::change_x_to_y(
+                &CONTRACT_PROGRAM_ID,
+                &spl_token::id(),
+                &accounts.user_wallets_authority_key,
+                &accounts.user_wallet_x_key,
+                &accounts.user_wallet_y_key,
+                &accounts.contract_key,
+                &accounts.pool_mint_key,
+                &accounts.pool_wallet_x_key,
+                &accounts.authority_key,
+                1,
+            )
+            .unwrap(),
+            vec![
+                &mut Account::default(),
+                &mut accounts.user_wallet_x_account,
+                &mut accounts.user_wallet_y_account,
+                &mut accounts.contract_account,
+                &mut accounts.pool_mint_account,
+                &mut accounts.pool_wallet_x_account,
+                &mut Account::default(),
+                &mut Account::default(),
+            ],
+        )
+        .unwrap();
+
+        do_process_instruction(
+            ContractInstruction::change_y_to_x(
                 &CONTRACT_PROGRAM_ID,
                 &spl_token::id(),
                 &accounts.user_wallets_authority_key,

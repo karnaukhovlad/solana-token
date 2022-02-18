@@ -107,4 +107,37 @@ impl ContractInstruction {
             data,
         })
     }
+
+    pub fn change_y_to_x(
+        program_id: &Pubkey,
+        token_program_id: &Pubkey,
+        user_wallets_authority_id: &Pubkey,
+        user_wallet_x_id: &Pubkey,
+        user_wallet_y_id: &Pubkey,
+        pool_contract_id: &Pubkey,
+        pool_mint_id: &Pubkey,
+        pool_wallet_x_id: &Pubkey,
+        authority_id: &Pubkey,
+        token_y_amount: u64,
+    ) -> Result<Instruction, ProgramError> {
+        let instr_data = ContractInstruction::ChangeYtoX(ChangeYtoX { token_y_amount });
+        let data = instr_data.pack();
+
+        let accounts = vec![
+            AccountMeta::new_readonly(*user_wallets_authority_id, true),
+            AccountMeta::new(*user_wallet_x_id, false),
+            AccountMeta::new(*user_wallet_y_id, false),
+            AccountMeta::new_readonly(*pool_contract_id, false),
+            AccountMeta::new(*pool_mint_id, false),
+            AccountMeta::new(*pool_wallet_x_id, false),
+            AccountMeta::new_readonly(*authority_id, false),
+            AccountMeta::new_readonly(*token_program_id, false),
+        ];
+
+        Ok(Instruction {
+            program_id: *program_id,
+            accounts,
+            data,
+        })
+    }
 }
