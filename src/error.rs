@@ -1,6 +1,5 @@
 //! Error types
 use num_derive::FromPrimitive;
-use num_traits::FromPrimitive;
 use solana_program::program_error::PrintProgramError;
 use solana_program::{decode_error::DecodeError, msg, program_error::ProgramError};
 use thiserror::Error;
@@ -111,76 +110,12 @@ impl From<CrateError> for ProgramError {
 }
 impl<T> DecodeError<T> for CrateError {
     fn type_of() -> &'static str {
-        "Swap Error"
+        "Crate Error"
     }
 }
 
 impl PrintProgramError for CrateError {
-    fn print<E>(&self)
-    where
-        E: 'static + std::error::Error + DecodeError<E> + PrintProgramError + FromPrimitive,
-    {
-        match self {
-            CrateError::AlreadyInUse => msg!("Error: Swap account already in use"),
-            CrateError::InvalidProgramAddress => {
-                msg!("Error: Invalid program address generated from bump seed and key")
-            }
-            CrateError::InvalidOwner => {
-                msg!("Error: The input account owner is not the program address")
-            }
-            CrateError::InvalidOutputOwner => {
-                msg!("Error: Output pool account owner cannot be the program address")
-            }
-            CrateError::ExpectedMint => {
-                msg!("Error: Deserialized account is not an SPL Token mint")
-            }
-            CrateError::ExpectedAccount => {
-                msg!("Error: Deserialized account is not an SPL Token account")
-            }
-            CrateError::EmptySupply => msg!("Error: Input token account empty"),
-            CrateError::InvalidSupply => msg!("Error: Pool token mint has a non-zero supply"),
-            CrateError::RepeatedMint => msg!("Error: Swap input token accounts have the same mint"),
-            CrateError::InvalidDelegate => msg!("Error: Token account has a delegate"),
-            CrateError::InvalidInput => msg!("Error: InvalidInput"),
-            CrateError::IncorrectSwapAccount => {
-                msg!("Error: Address of the provided swap token account is incorrect")
-            }
-            CrateError::IncorrectPoolMint => {
-                msg!("Error: Address of the provided pool token mint is incorrect")
-            }
-            CrateError::InvalidOutput => msg!("Error: InvalidOutput"),
-            CrateError::CalculationFailure => msg!("Error: CalculationFailure"),
-            CrateError::InvalidInstruction => msg!("Error: InvalidInstruction"),
-            CrateError::ExceededSlippage => {
-                msg!("Error: Swap instruction exceeds desired slippage limit")
-            }
-            CrateError::InvalidCloseAuthority => msg!("Error: Token account has a close authority"),
-            CrateError::InvalidFreezeAuthority => {
-                msg!("Error: Pool token mint has a freeze authority")
-            }
-            CrateError::IncorrectFeeAccount => msg!("Error: Pool fee token account incorrect"),
-            CrateError::ZeroTradingTokens => {
-                msg!("Error: Given pool token amount results in zero trading tokens")
-            }
-            CrateError::FeeCalculationFailure => msg!(
-                "Error: The fee calculation failed due to overflow, underflow, or unexpected 0"
-            ),
-            CrateError::ConversionFailure => msg!("Error: Conversion to or from u64 failed."),
-            CrateError::InvalidFee => {
-                msg!("Error: The provided fee does not match the program owner's constraints")
-            }
-            CrateError::IncorrectTokenProgramId => {
-                msg!("Error: The provided token program does not match the token program expected by the swap")
-            }
-            CrateError::UnsupportedCurveType => {
-                msg!("Error: The provided curve type is not supported by the program owner")
-            }
-            CrateError::InvalidCurve => {
-                msg!("Error: The provided curve parameters are invalid")
-            }
-            CrateError::UnsupportedCurveOperation => {
-                msg!("Error: The operation cannot be performed on the given curve")
-            }
-        }
+    fn print<E>(&self) {
+        msg!("Error: {}", &self.to_string());
     }
 }
