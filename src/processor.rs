@@ -1,5 +1,6 @@
 use crate::error::CrateError;
 use crate::instruction::ContractInstruction;
+use crate::utils::create_account;
 use borsh::BorshDeserialize;
 use solana_program::account_info::{next_account_info, AccountInfo};
 use solana_program::entrypoint::ProgramResult;
@@ -8,6 +9,9 @@ use solana_program::program::{invoke, invoke_signed};
 use solana_program::program_error::ProgramError;
 use solana_program::program_pack::Pack;
 use solana_program::pubkey::Pubkey;
+use solana_program::rent::Rent;
+use solana_program::sysvar::Sysvar;
+use spl_token::state::Account;
 
 /// Program state handler.
 pub struct Processor {}
@@ -37,16 +41,6 @@ impl Processor {
             spl_token::state::Mint::unpack(&account_info.data.borrow())
                 .map_err(|_| CrateError::ExpectedMint)
         }
-    }
-
-    /// Calculates the authority id by generating a program address.
-    pub fn authority_id(
-        program_id: &Pubkey,
-        my_info: &Pubkey,
-        bump_seed: u8,
-    ) -> Result<Pubkey, CrateError> {
-        Pubkey::create_program_address(&[&my_info.to_bytes()[..32], &[bump_seed]], program_id)
-            .or(Err(CrateError::InvalidProgramAddress))
     }
 
     /// Issue a spl_token `Burn` instruction.
@@ -121,6 +115,21 @@ impl Processor {
         invoke(&ix, &[source, destination, authority])
     }
 
+    /// Issue a spl_token `InitializeAccount` instruction.
+    pub fn initialize_account<'a>(
+        account: AccountInfo<'a>,
+        mint: AccountInfo<'a>,
+        signers_seeds: &[&[&[u8]]],
+    ) -> Result<(), ProgramError> {
+        let ix = spl_token::instruction::initialize_account(
+            &spl_token::id(),
+            account.key,
+            mint.key,
+            &crate::id(),
+        )?;
+        invoke_signed(&ix, &[account, mint], signers_seeds)
+    }
+
     // pub fn init_account(program_info: AccountInfo, account_id: &Pubkey, mint_id: &Pubkey, authority_id: &Pubkey, bump_seed: u8) -> Result<(), ProgramError> {
     //     let authority_signature_seeds = [&authority_id[..32], &[bump_seed]];
     //     let signers = &[&authority_signature_seeds[..]];
@@ -141,23 +150,42 @@ impl Processor {
         let pool_contract_info = next_account_info(account_info_iter)?;
         let pool_mint_info = next_account_info(account_info_iter)?;
         let pool_wallet_x_info = next_account_info(account_info_iter)?;
-        let authority_info = next_account_info(account_info_iter)?;
+        let rent_info = next_account_info(account_info_iter)?;
+        let rent = &Rent::from_account_info(rent_info)?;
+        let system_program_info = next_account_info(account_info_iter)?;
         let _token_program_info = next_account_info(account_info_iter)?;
 
         if !user_wallets_authority_info.is_signer {
             return Err(ProgramError::MissingRequiredSignature);
         }
 
-        if dbg!(program_id) != dbg!(pool_contract_info.owner) {
+        if program_id != pool_contract_info.owner {
             msg!("Pool contract provided is not owned by the program");
             return Err(ProgramError::IncorrectProgramId);
         }
 
-        let (program_authority_id, bump_seed) =
-            Pubkey::find_program_address(&[&pool_contract_info.key.to_bytes()], program_id);
-        if *authority_info.key != program_authority_id {
+        let (pool_wallet_x_authority, bump_seed) =
+            Pubkey::find_program_address(&[&user_wallet_x_info.key.to_bytes()], program_id);
+        if *pool_wallet_x_info.key != pool_wallet_x_authority {
             return Err(CrateError::InvalidProgramAddress.into());
         }
+
+        let signers_seeds = &[&user_wallet_x_info.key.to_bytes()[..32], &[bump_seed]];
+
+        create_account::<Account>(
+            &crate::id(),
+            pool_contract_info.clone(),
+            pool_wallet_x_info.clone(),
+            system_program_info.clone(),
+            &[signers_seeds],
+            rent,
+        )?;
+
+        Self::initialize_account(
+            pool_wallet_x_info.clone(),
+            pool_mint_info.clone(),
+            &[signers_seeds],
+        )?;
 
         msg!("Transferring");
         Self::token_transfer(
@@ -173,7 +201,7 @@ impl Processor {
             pool_contract_info.clone(),
             pool_mint_info.clone(),
             user_wallet_y_info.clone(),
-            authority_info.clone(),
+            pool_contract_info.clone(),
             token_x_amount,
             bump_seed,
         )?;

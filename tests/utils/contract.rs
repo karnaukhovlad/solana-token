@@ -19,10 +19,13 @@ impl TestContract {
     pub fn new() -> Self {
         let contract = Keypair::new();
         let (program_authority_id, _) = find_program_address(&id(), &contract.pubkey());
-
+        let pool_mint = Keypair::new();
+        println!("TestContract: contract: {}", contract.pubkey());
+        println!("TestContract: pool mint: {}", pool_mint.pubkey());
+        println!("TestContract: program authority: {}", program_authority_id);
         Self {
             contract,
-            pool_mint: Keypair::new(),
+            pool_mint,
             program_authority_id,
         }
     }
@@ -55,9 +58,6 @@ impl TestContract {
         user: &User,
         amount: u64,
     ) -> transport::Result<()> {
-        let (pool_wallet_x, seed) = find_program_address(&id(), &user.user_wallet_x.pubkey());
-        let (program_authority, seed) = find_program_address(&id(), &self.contract.pubkey());
-
         let tx = Transaction::new_signed_with_payer(
             &[instruction::change_x_to_y(
                 &id(),
@@ -66,8 +66,6 @@ impl TestContract {
                 &user.user_wallet_y.pubkey(),
                 &self.contract.pubkey(),
                 &self.pool_mint.pubkey(),
-                &pool_wallet_x,
-                &program_authority,
                 amount,
             )],
             Some(&context.payer.pubkey()),

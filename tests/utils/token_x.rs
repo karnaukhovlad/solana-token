@@ -16,10 +16,11 @@ pub struct TokenX {
 
 impl TokenX {
     pub fn new() -> Self {
-        Self {
-            owner: Keypair::new(),
-            mint: Keypair::new(),
-        }
+        let owner = Keypair::new();
+        let mint = Keypair::new();
+        println!("TokenX: owner: {}", owner.pubkey());
+        println!("TokenX: mint: {}", mint.pubkey());
+        Self { owner, mint }
     }
 
     pub async fn init(&self, context: &mut ProgramTestContext) -> transport::Result<()> {

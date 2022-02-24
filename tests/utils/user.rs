@@ -18,10 +18,16 @@ pub struct User {
 
 impl User {
     pub fn new() -> Self {
+        let account = Keypair::new();
+        let user_wallet_x = Keypair::new();
+        let user_wallet_y = Keypair::new();
+        println!("User: account {}", account.pubkey());
+        println!("User: wallet x {}", user_wallet_x.pubkey());
+        println!("User: wallet y {}", user_wallet_y.pubkey());
         Self {
-            account: Keypair::new(),
-            user_wallet_x: Keypair::new(),
-            user_wallet_y: Keypair::new(),
+            account,
+            user_wallet_x,
+            user_wallet_y,
         }
     }
 

@@ -5,6 +5,7 @@ pub mod error;
 pub mod instruction;
 pub mod processor;
 pub mod state;
+pub mod utils;
 
 solana_program::declare_id!("6pMk1woyNXh31Ba7wYuwkDeBgWfohTCor1AGVUQAGxXb");
 

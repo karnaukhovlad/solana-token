@@ -70,6 +70,35 @@ pub async fn create_token_account(
     context.banks_client.process_transaction(tx).await
 }
 
+// pub async fn create_associated_token_account(
+//     context: &mut ProgramTestContext,
+//     account: &Pubkey,
+//     mint: &Pubkey,
+//     authority: &Pubkey,
+// ) -> transport::Result<()> {
+//     println!("create_token_account");
+//     let rent = context.banks_client.get_rent().await.unwrap();
+//
+//     let tx = Transaction::new_signed_with_payer(
+//         &[
+//             system_instruction::create_account(
+//                 &context.payer.pubkey(),
+//                 &account,
+//                 rent.minimum_balance(spl_token::state::Account::LEN),
+//                 spl_token::state::Account::LEN as u64,
+//                 &spl_token::id(),
+//             ),
+//             spl_token::instruction::initialize_account(&spl_token::id(), &account, mint, authority)
+//                 .unwrap(),
+//         ],
+//         Some(&context.payer.pubkey()),
+//         &[&context.payer, account],
+//         context.last_blockhash,
+//     );
+//
+//     context.banks_client.process_transaction(tx).await
+// }
+
 pub async fn create_mint(
     context: &mut ProgramTestContext,
     mint: &Keypair,
