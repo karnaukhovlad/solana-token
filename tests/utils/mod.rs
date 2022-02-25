@@ -43,7 +43,6 @@ pub async fn create_token_account(
     mint: &Pubkey,
     authority: &Pubkey,
 ) -> transport::Result<()> {
-    println!("create_token_account");
     let rent = context.banks_client.get_rent().await.unwrap();
 
     let tx = Transaction::new_signed_with_payer(

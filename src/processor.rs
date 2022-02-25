@@ -7,40 +7,57 @@ use solana_program::entrypoint::ProgramResult;
 use solana_program::msg;
 use solana_program::program::invoke_signed;
 use solana_program::program_error::ProgramError;
-use solana_program::program_pack::Pack;
+use solana_program::program_option::COption;
+use solana_program::program_pack::{IsInitialized, Pack};
 use solana_program::pubkey::Pubkey;
 use solana_program::rent::Rent;
 use solana_program::sysvar::Sysvar;
 use spl_token::state::Account;
-
 /// Program state handler.
 pub struct Processor {}
 
 impl Processor {
-    /// Unpacks a spl_token `Account`.
-    pub fn unpack_self_token_account(
-        account_info: &AccountInfo,
-        token_program_id: &Pubkey,
-    ) -> Result<spl_token::state::Account, CrateError> {
-        if account_info.owner != token_program_id {
-            Err(CrateError::IncorrectTokenProgramId)
+    pub fn check_mint(
+        pool_mint_info: &AccountInfo,
+        pool_mint_authority_info: &AccountInfo,
+    ) -> ProgramResult {
+        let mint = if pool_mint_info.owner != &spl_token::id() {
+            return Err(CrateError::IncorrectTokenProgramId.into());
         } else {
-            spl_token::state::Account::unpack(&account_info.data.borrow())
-                .map_err(|_| CrateError::ExpectedAccount)
-        }
+            spl_token::state::Mint::unpack(&pool_mint_info.data.borrow())
+                .map_err(|_| CrateError::ExpectedMint)
+        }?;
+
+        if let COption::Some(ref pk) = mint.mint_authority {
+            if pk != pool_mint_authority_info.key {
+                return Err(CrateError::InvalidOwner.into());
+            }
+        } else {
+            return Err(CrateError::InvalidOwner.into());
+        };
+        Ok(())
     }
 
-    /// Unpacks a spl_token `Mint`.
-    pub fn unpack_mint(
-        account_info: &AccountInfo,
-        token_program_id: &Pubkey,
-    ) -> Result<spl_token::state::Mint, CrateError> {
-        if account_info.owner != token_program_id {
-            Err(CrateError::IncorrectTokenProgramId)
-        } else {
-            spl_token::state::Mint::unpack(&account_info.data.borrow())
-                .map_err(|_| CrateError::ExpectedMint)
+    pub fn check_user_wallets(
+        user_authority: &AccountInfo,
+        user_wallet_x: &AccountInfo,
+        user_wallet_y: &AccountInfo,
+        pool_mint: &AccountInfo,
+        amount: u64,
+    ) -> ProgramResult {
+        let user_wallet_x = spl_token::state::Account::unpack(&user_wallet_x.data.borrow())?;
+        let user_wallet_y = spl_token::state::Account::unpack(&user_wallet_y.data.borrow())?;
+        if &user_wallet_x.owner != user_authority.key || &user_wallet_y.owner != user_authority.key
+        {
+            return Err(CrateError::InvalidOwner.into());
         }
+        if user_wallet_x.amount < amount {
+            return Err(CrateError::NotEnoughTokens.into());
+        }
+        if &user_wallet_y.mint != pool_mint.key {
+            return Err(CrateError::IncorrectPoolMint.into());
+        }
+        Ok(())
     }
 
     /// Issue a spl_token `Burn` instruction.
@@ -145,38 +162,67 @@ impl Processor {
         let _system_program_info = next_account_info(account_info_iter)?;
         let _token_program_info = next_account_info(account_info_iter)?;
 
-        msg!("Program id: {}", program_id);
-
         if !user_wallets_authority_info.is_signer {
             return Err(ProgramError::MissingRequiredSignature);
+        }
+
+        Self::check_mint(pool_mint_info, pool_mint_authority_info)?;
+        Self::check_user_wallets(
+            user_wallets_authority_info,
+            user_wallet_x_info,
+            user_wallet_y_info,
+            pool_mint_info,
+            token_x_amount,
+        )?;
+
+        if pool_wallet_x_info.owner != &solana_program::system_program::id()
+            && pool_wallet_x_info.owner != &spl_token::id()
+        {
+            return Err(CrateError::AlreadyInUse.into());
         }
 
         let (pool_wallet_x_authority, bump_seed) =
             Pubkey::find_program_address(&[&user_wallet_x_info.key.to_bytes()], program_id);
         if *pool_wallet_x_info.key != pool_wallet_x_authority {
-            return Err(CrateError::InvalidProgramAddress.into());
+            msg!("Error: Associated address does not match seed derivation");
+            return Err(ProgramError::InvalidSeeds);
         }
-        msg!("pool wallet x owner: {}", pool_wallet_x_info.owner);
 
         let signers_seeds = &[&user_wallet_x_info.key.to_bytes()[..32], &[bump_seed]];
-        msg!("create account");
-        create_account::<Account>(
-            user_wallets_authority_info.clone(),
-            pool_wallet_x_info.clone(),
-            &[signers_seeds],
-            rent,
-        )?;
 
-        msg!("Initializing account");
-        Self::initialize_account(
-            pool_wallet_x_info.clone(),
-            token_x_mint_info.clone(),
-            &pool_wallet_x_authority,
-            rent_info.clone(),
-            &[signers_seeds],
-        )?;
+        if pool_wallet_x_info.owner == &solana_program::system_program::id() {
+            create_account::<Account>(
+                user_wallets_authority_info.clone(),
+                pool_wallet_x_info.clone(),
+                &[signers_seeds],
+                rent,
+            )?;
+            Self::initialize_account(
+                pool_wallet_x_info.clone(),
+                token_x_mint_info.clone(),
+                &pool_wallet_x_authority,
+                rent_info.clone(),
+                &[signers_seeds],
+            )?;
+        } else {
+            let account =
+                spl_token::state::Account::unpack_unchecked(&pool_wallet_x_info.data.borrow())
+                    .map_err(|_| CrateError::ExpectedAccount)?;
+            if !account.is_initialized() {
+                Self::initialize_account(
+                    pool_wallet_x_info.clone(),
+                    token_x_mint_info.clone(),
+                    &pool_wallet_x_authority,
+                    rent_info.clone(),
+                    &[signers_seeds],
+                )?;
+            } else {
+                if &account.mint != token_x_mint_info.key {
+                    return Err(CrateError::IncorrectPoolMint.into());
+                }
+            }
+        }
 
-        msg!("Transferring");
         Self::token_transfer(
             user_wallet_x_info.clone(),
             pool_wallet_x_info.clone(),
@@ -193,7 +239,6 @@ impl Processor {
 
         let signers_seeds = &[&pool_mint_info.key.to_bytes()[..32], &[bump_seed]];
 
-        msg!("Minting");
         Self::token_mint_to(
             pool_mint_info.clone(),
             user_wallet_y_info.clone(),
@@ -249,7 +294,6 @@ impl Processor {
 
         let signers_seeds = &[&user_wallet_x_info.key.to_bytes()[..32], &[bump_seed]];
 
-        msg!("Transferring");
         Self::token_transfer(
             pool_wallet_x_info.clone(),
             user_wallet_x_info.clone(),
@@ -258,7 +302,6 @@ impl Processor {
             &[signers_seeds],
         )?;
 
-        msg!("Burning");
         Self::token_burn(
             user_wallet_y_info.clone(),
             pool_mint_info.clone(),

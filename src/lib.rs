@@ -1,3 +1,5 @@
+extern crate core;
+
 use solana_program::pubkey::Pubkey;
 
 pub mod entrypoint;
