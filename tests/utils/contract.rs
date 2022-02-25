@@ -1,5 +1,5 @@
-use crate::{create_mint, create_token_account, TokenX, User};
-use solana_program::{program_pack::Pack, pubkey::Pubkey, system_instruction};
+use crate::{create_mint, TokenX, User};
+use solana_program::pubkey::Pubkey;
 use solana_program_test::ProgramTestContext;
 use solana_sdk::{
     signature::{Keypair, Signer},
@@ -10,66 +10,71 @@ use solana_token::{find_program_address, id, instruction};
 
 #[derive(Debug)]
 pub struct TestContract {
-    pub contract: Keypair,
     pub pool_mint: Keypair,
-    pub program_authority_id: Pubkey,
+    pub mint_authority: Pubkey,
 }
 
 impl TestContract {
     pub fn new() -> Self {
-        let contract = Keypair::new();
-        let (program_authority_id, _) = find_program_address(&id(), &contract.pubkey());
         let pool_mint = Keypair::new();
-        println!("TestContract: contract: {}", contract.pubkey());
+        let (mint_authority, _) = find_program_address(&id(), &pool_mint.pubkey());
         println!("TestContract: pool mint: {}", pool_mint.pubkey());
-        println!("TestContract: program authority: {}", program_authority_id);
+        println!("TestContract: pool mint authority: {}", mint_authority);
         Self {
-            contract,
             pool_mint,
-            program_authority_id,
+            mint_authority,
         }
     }
 
     pub async fn create(&self, context: &mut ProgramTestContext) -> transport::Result<()> {
-        create_mint(context, &self.pool_mint, &context.payer.pubkey()).await?;
-
-        let rent = context.banks_client.get_rent().await.unwrap();
-
-        let tx = Transaction::new_signed_with_payer(
-            &[system_instruction::create_account(
-                &context.payer.pubkey(),
-                &self.contract.pubkey(),
-                rent.minimum_balance(spl_token::state::Account::LEN),
-                0,
-                &id(),
-            )],
-            Some(&context.payer.pubkey()),
-            /// Проверить выполнится ли без owner keypair?
-            &[&context.payer, &self.contract],
-            context.last_blockhash,
-        );
-
-        context.banks_client.process_transaction(tx).await
+        create_mint(context, &self.pool_mint, &self.mint_authority).await
     }
 
     pub async fn change_x_to_y(
         &self,
         context: &mut ProgramTestContext,
         user: &User,
+        token_x: &TokenX,
         amount: u64,
     ) -> transport::Result<()> {
+        println!("Payer {}", &context.payer.pubkey());
         let tx = Transaction::new_signed_with_payer(
             &[instruction::change_x_to_y(
                 &id(),
                 &user.account.pubkey(),
                 &user.user_wallet_x.pubkey(),
+                &token_x.mint.pubkey(),
                 &user.user_wallet_y.pubkey(),
-                &self.contract.pubkey(),
                 &self.pool_mint.pubkey(),
                 amount,
             )],
-            Some(&context.payer.pubkey()),
-            &[&context.payer, &user.account],
+            Some(&user.account.pubkey()),
+            &[&user.account],
+            context.last_blockhash,
+        );
+
+        context.banks_client.process_transaction(tx).await
+    }
+
+    pub async fn change_y_to_x(
+        &self,
+        context: &mut ProgramTestContext,
+        user: &User,
+        _token_x: &TokenX,
+        amount: u64,
+    ) -> transport::Result<()> {
+        println!("Payer {}", &context.payer.pubkey());
+        let tx = Transaction::new_signed_with_payer(
+            &[instruction::change_y_to_x(
+                &id(),
+                &user.account.pubkey(),
+                &user.user_wallet_x.pubkey(),
+                &user.user_wallet_y.pubkey(),
+                &self.pool_mint.pubkey(),
+                amount,
+            )],
+            Some(&user.account.pubkey()),
+            &[&user.account],
             context.last_blockhash,
         );
 

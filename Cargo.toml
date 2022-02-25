@@ -3,8 +3,6 @@ name = "solana-token"
 version = "0.1.0"
 edition = "2021"
 
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
-
 [dependencies]
 solana-program = "1.9.6"
 spl-token = { version = "3.3.0", features = ["no-entrypoint"] }
@@ -16,3 +14,6 @@ borsh = "0.9.3"
 [dev-dependencies]
 solana-sdk = "1.9.6"
 solana-program-test = "1.9.6"
+
+[lib]
+crate-type = ["cdylib", "lib"]

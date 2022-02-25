@@ -1,4 +1,4 @@
-use crate::{create_mint, create_token_account, mint_tokens};
+use crate::create_mint;
 use solana_program::program_pack::Pack;
 use solana_program::pubkey::Pubkey;
 use solana_program::system_instruction;
@@ -35,7 +35,7 @@ impl TokenX {
                 &spl_token::id(),
             )],
             Some(&context.payer.pubkey()),
-            /// Проверить выполнится ли без owner keypair?
+            // Проверить выполнится ли без owner keypair?
             &[&context.payer, &self.owner],
             context.last_blockhash,
         );
@@ -43,16 +43,6 @@ impl TokenX {
         context.banks_client.process_transaction(tx).await?;
 
         create_mint(context, &self.mint, &self.owner.pubkey()).await
-    }
-
-    pub async fn create_account(
-        &self,
-        context: &mut ProgramTestContext,
-        owner: &Pubkey,
-    ) -> transport::Result<Keypair> {
-        let new_account = Keypair::new();
-        create_token_account(context, &new_account, &self.mint.pubkey(), owner).await?;
-        Ok(new_account)
     }
 
     pub async fn mint_to(

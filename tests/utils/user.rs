@@ -1,7 +1,5 @@
 use crate::token_x::TokenX;
-use crate::{create_mint, create_token_account, TestContract};
-use solana_program::program_pack::Pack;
-use solana_program::pubkey::Pubkey;
+use crate::{create_token_account, TestContract};
 use solana_program::system_instruction;
 use solana_program_test::ProgramTestContext;
 use solana_sdk::signature::Keypair;
@@ -37,22 +35,16 @@ impl User {
         token_x: &TokenX,
         contract: &TestContract,
     ) -> transport::Result<()> {
-        let rent = context.banks_client.get_rent().await.unwrap();
-
         let tx = Transaction::new_signed_with_payer(
-            &[system_instruction::create_account(
+            &[system_instruction::transfer(
                 &context.payer.pubkey(),
                 &self.account.pubkey(),
-                rent.minimum_balance(spl_token::state::Account::LEN),
-                spl_token::state::Account::LEN as u64,
-                &spl_token::id(),
+                999999999,
             )],
             Some(&context.payer.pubkey()),
-            /// Проверить выполнится ли без owner keypair?
-            &[&context.payer, &self.account],
+            &[&context.payer],
             context.last_blockhash,
         );
-
         context.banks_client.process_transaction(tx).await?;
 
         create_token_account(
